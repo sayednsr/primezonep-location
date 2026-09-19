@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PrimeZone Location</title>
+<link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f7f8fa;color:#17202a}
+.wrap{max-width:760px;margin:auto;padding:18px}.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+h1{margin:0 0 8px}.sub{color:#667085;margin-bottom:16px}#map{width:100%;height:360px;border-radius:14px;overflow:hidden}
+.row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #eee}.row:last-child{border-bottom:0}
+.label{color:#667085}.value{font-weight:600;text-align:right;word-break:break-word}
+button{width:100%;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;margin-top:10px}
+#locateBtn{background:#111827;color:#fff}#saveBtn{background:#16a34a;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}
+#status{margin-top:12px;padding:11px;border-radius:10px;background:#f2f4f7;color:#344054;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="card"><h1>PrimeZone Location</h1><div class="sub">Get your current GPS location</div><button id="locateBtn">Get Current Location</button></div>
+<div class="card"><div id="map"></div></div>
+<div class="card">
+<div class="row"><span class="label">Latitude</span><span class="value" id="lat">—</span></div>
+<div class="row"><span class="label">Longitude</span><span class="value" id="lng">—</span></div>
+<div class="row"><span class="label">Accuracy</span><span class="value" id="accuracy">—</span></div>
+<div class="row"><span class="label">Distance from map point</span><span class="value" id="distance">—</span></div>
+<button id="saveBtn" disabled>Save Location</button>
+<div id="status">Waiting for location…</div>
+</div>
+</div>
+<script>
+const SUPABASE_URL="https://uwijvyvxsdurtzsfyiwo.supabase.co";
+const SUPABASE_KEY="sb_publishable_HxmpnBJKs9WpW47QKtbPqQ_K5_Kf7Fd";
+const TABLE_NAME="gps_test";
+let currentLocation=null,currentMarker=null,selectedMapPoint=null;
+const statusEl=document.getElementById("status"),latEl=document.getElementById("lat"),lngEl=document.getElementById("lng"),
+accuracyEl=document.getElementById("accuracy"),distanceEl=document.getElementById("distance"),
+saveBtn=document.getElementById("saveBtn"),locateBtn=document.getElementById("locateBtn");
+function setStatus(m){statusEl.textContent=m}
+function haversineMeters(a,b,c,d){const R=6371000,r=x=>x*Math.PI/180,dLat=r(c-a),dLon=r(d-b),
+x=Math.sin(dLat/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dLon/2)**2;return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))}
+const map=new maplibregl.Map({container:"map",style:"https://tiles.openfreemap.org/styles/liberty",center:[31.2357,30.0444],zoom:12});
+map.addControl(new maplibregl.NavigationControl(),"top-right");
+map.on("click",e=>{selectedMapPoint={lat:e.lngLat.lat,lng:e.lngLat.lng};if(currentLocation){const d=haversineMeters(currentLocation.latitude,currentLocation.longitude,selectedMapPoint.lat,selectedMapPoint.lng);distanceEl.textContent=d<1000?`${Math.round(d)} m`:`${(d/1000).toFixed(2)} km`}else distanceEl.textContent="Get GPS location first"});
+function showLocation(p){const latitude=p.coords.latitude,longitude=p.coords.longitude,accuracy=p.coords.accuracy;
+currentLocation={latitude,longitude,accuracy};latEl.textContent=latitude.toFixed(7);lngEl.textContent=longitude.toFixed(7);accuracyEl.textContent=`${Math.round(accuracy)} m`;
+if(selectedMapPoint){const d=haversineMeters(latitude,longitude,selectedMapPoint.lat,selectedMapPoint.lng);distanceEl.textContent=d<1000?`${Math.round(d)} m`:`${(d/1000).toFixed(2)} km`}
+if(currentMarker)currentMarker.setLngLat([longitude,latitude]);else currentMarker=new maplibregl.Marker({color:"#e11d48"}).setLngLat([longitude,latitude]).addTo(map);
+map.flyTo({center:[longitude,latitude],zoom:16});saveBtn.disabled=false;setStatus("Location captured successfully.")}
+function locationError(e){let m="Could not get location.";if(e.code===1)m="Location permission was denied. Allow location access and try again.";else if(e.code===2)m="Location is unavailable. Check GPS/location services and try again.";else if(e.code===3)m="Location request timed out. Try again.";setStatus(m)}
+locateBtn.addEventListener("click",()=>{if(!navigator.geolocation)return setStatus("Geolocation is not supported by this browser.");
+locateBtn.disabled=true;setStatus("Getting your GPS location…");navigator.geolocation.getCurrentPosition(showLocation,locationError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});setTimeout(()=>locateBtn.disabled=false,21000)});
+saveBtn.addEventListener("click",async()=>{if(!currentLocation)return setStatus("Get your location first.");saveBtn.disabled=true;setStatus("Saving location…");
+try{const response=await fetch(`${SUPABASE_URL}/rest/v1/${TABLE_NAME}`,{method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_KEY,"Authorization":`Bearer ${SUPABASE_KEY}`,"Prefer":"return=minimal"},body:JSON.stringify({test_id:"github-pages-test",latitude:currentLocation.latitude,longitude:currentLocation.longitude,accuracy:currentLocation.accuracy,captured_at:new Date().toISOString()})});
+if(!response.ok)throw new Error(`HTTP ${response.status}: ${await response.text()}`);setStatus("Location saved successfully to Supabase.")}catch(e){console.error(e);setStatus(`Save error: ${e.message}`)}finally{saveBtn.disabled=false}});
+</script>
+</body>
+</html>

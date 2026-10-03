@@ -7,27 +7,7 @@
 <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!--
-Required table for the location step (run once in Supabase SQL editor):
-
-create table if not exists public.customer_locations (
-  id uuid primary key default gen_random_uuid(),
-  auth_user_id uuid not null unique references auth.users(id) on delete cascade,
-  latitude double precision not null,
-  longitude double precision not null,
-  accuracy double precision,
-  source text not null check (source in ('gps','manual')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-alter table public.customer_locations enable row level security;
-create policy "Users can read own location" on public.customer_locations
-  for select to authenticated using (auth.uid() = auth_user_id);
-create policy "Users can create own location" on public.customer_locations
-  for insert to authenticated with check (auth.uid() = auth_user_id);
-create policy "Users can update own location" on public.customer_locations
-  for update to authenticated using (auth.uid() = auth_user_id) with check (auth.uid() = auth_user_id);
--->
+<!-- Run supabase_fix.sql in the Supabase SQL editor before using this page. -->
 <style>
 *{box-sizing:border-box}[hidden]{display:none!important}
 body{margin:0;font-family:"Segoe UI",Tahoma,Arial,sans-serif;background:#f7f8fa;color:#17202a}
@@ -147,7 +127,7 @@ $("accountForm").addEventListener("submit",async e=>{e.preventDefault();
  btn.disabled=true;say("جارٍ المعالجة…");
  try{
   if(mode==="signup"){
-   const{data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:$("name").value.trim(),phone:$("phone").value.trim()}}});
+   const{data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin+location.pathname,data:{full_name:$("name").value.trim(),phone:$("phone").value.trim()}}});
    if(error)throw error;
    if(!data.session){setMode("signin");return say("تم إنشاء الحساب. أكّد بريدك الإلكتروني من الرابط الذي وصلك، ثم سجّل الدخول من هنا لإكمال الخطوة التالية.",true)}
   }else{
@@ -194,7 +174,11 @@ $("saveBtn").addEventListener("click",async()=>{
 
 $("outBtn").addEventListener("click",async()=>{await sb.auth.signOut();location.reload()});
 
-setMode("signup");route();
+const hp=new URLSearchParams(location.hash.slice(1));
+if(hp.get("error_code")){setMode("signin");show("account");
+ say(hp.get("error_code")==="otp_expired"?"رابط التأكيد انتهت صلاحيته أو سبق استخدامه. إن كان حسابك مؤكّدًا فسجّل الدخول مباشرة.":(hp.get("error_description")||"تعذّر تأكيد الحساب."));
+ history.replaceState(null,"",location.pathname)}
+else{setMode("signup");route()}
 </script>
 </body>
 </html>
